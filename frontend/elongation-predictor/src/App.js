@@ -4,6 +4,7 @@ import axios from "axios";
 
 export default function ElongationPredictor() {
   const [percentage, setPercentage] = useState("");
+  const [confirmedPercentage, setConfirmedPercentage] = useState(null); 
   const [selectedType, setSelectedType] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +46,7 @@ export default function ElongationPredictor() {
 
       const imageUrl = URL.createObjectURL(response.data);
       setImageUrl(imageUrl);
+      setConfirmedPercentage(percentage); 
     } catch (error) {
       console.error("Error generating image", error);
     }
@@ -75,12 +77,12 @@ export default function ElongationPredictor() {
         <div className="flex flex-col items-center">
           <div className="relative mb-4">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               placeholder="Enter elongation percentage"
-              step="0.1"
               value={percentage}
               onChange={handlePercentageChange}
-              className="p-2 pr-8 border border-gray-300 rounded-lg text-black w-32"
+              className="p-2 pr-8 border border-gray-300 rounded-lg text-black w-32 no-arrows"
               min="5"
               max="60"
             />
@@ -102,16 +104,16 @@ export default function ElongationPredictor() {
       {imageUrl && (
         <div className="mt-6 flex flex-col items-center">
           <h2 className="text-lg font-semibold mb-2">
-            Generated Image: ({percentage}%)
+            Generated Image: ({confirmedPercentage}%)
           </h2>
           <img 
             src={imageUrl} 
-            alt={`Generated Elongation ${percentage}%`} 
+            alt={`Generated Elongation ${confirmedPercentage}%`} 
             className="w-64 h-64 object-contain border-2 border-gray-300 rounded-lg mb-4" 
           />
           <a
             href={imageUrl}
-            download={`elongation_${percentage}.png`}
+            download={`elongation_${confirmedPercentage}.png`}
             className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
           >
             Download Image
