@@ -16,12 +16,15 @@ export default function ElongationPredictor() {
   };
 
   const handlePercentageChange = (e) => {
-    const value = parseFloat(e.target.value);
+    const value = e.target.value;
     setPercentage(value);
 
-    if (value < 5) {
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) {
+      setError("Please enter a valid number");
+    } else if (numValue < 5) {
       setError("Enter minimum 5%");
-    } else if (value > 60) {
+    } else if (numValue > 60) {
       setError("Enter maximum 60%");
     } else {
       setError("");
@@ -70,16 +73,20 @@ export default function ElongationPredictor() {
 
       {selectedType && (
         <div className="flex flex-col items-center">
-          <input
-            type="number"
-            placeholder="Enter elongation percentage"
-            step= "0.1"
-            value={percentage}
-            onChange={(e) => setPercentage(e.target.value)}
-            className="mb-4 p-2 border border-gray-300 rounded-lg text-black"
-            min="5" max="60"
-          />
-          <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600">%</span>
+          <div className="relative mb-4">
+            <input
+              type="number"
+              placeholder="Enter elongation percentage"
+              step="0.1"
+              value={percentage}
+              onChange={handlePercentageChange}
+              className="p-2 pr-8 border border-gray-300 rounded-lg text-black w-32"
+              min="5"
+              max="60"
+            />
+            <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-600">%</span>
+          </div>
+
           {error && <p className="text-red-400 mb-2">{error}</p>}
 
           <button
@@ -94,8 +101,14 @@ export default function ElongationPredictor() {
 
       {imageUrl && (
         <div className="mt-6 flex flex-col items-center">
-          <h2 className="text-lg font-semibold mb-2">Generated Image:</h2>
-          <img src={imageUrl} alt="Generated Elongation" className="w-64 h-64 object-contain border-2 border-gray-300 rounded-lg mb-4" />
+          <h2 className="text-lg font-semibold mb-2">
+            Generated Image: ({percentage}%)
+          </h2>
+          <img 
+            src={imageUrl} 
+            alt={`Generated Elongation ${percentage}%`} 
+            className="w-64 h-64 object-contain border-2 border-gray-300 rounded-lg mb-4" 
+          />
           <a
             href={imageUrl}
             download={`elongation_${percentage}.png`}
