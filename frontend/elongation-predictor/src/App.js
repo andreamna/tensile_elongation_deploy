@@ -73,11 +73,13 @@ export default function ElongationPredictor() {
           <input
             type="number"
             placeholder="Enter elongation percentage"
+            step= "0.1"
             value={percentage}
-            onChange={handlePercentageChange}
+            onChange={(e) => setPercentage(e.target.value)}
             className="mb-4 p-2 border border-gray-300 rounded-lg text-black"
             min="5" max="60"
           />
+          <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600">%</span>
           {error && <p className="text-red-400 mb-2">{error}</p>}
 
           <button
