@@ -1,108 +1,71 @@
 import os
 import numpy as np
-import pickle
 import cv2
-import skimage.feature as skf
-import tensorflow.lite as tflite
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
-
 
 app = Flask(__name__)
 CORS(app, origins=["https://tensileelongationdeploy.vercel.app"])
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+PHASE_MAP_IMG_FOLDER = "phase_map_img"
+KAM_IMG_FOLDER = "KAM_img"
+MORPHED_OUTPUT_FOLDER = "morphed_outputs"
 
-phase_map_interpreter = tflite.Interpreter(model_path="models/elongation_model_phase_maps_morphed.tflite")
-phase_map_interpreter.allocate_tensors()
+os.makedirs(MORPHED_OUTPUT_FOLDER, exist_ok=True)
 
-kam_interpreter = tflite.Interpreter(model_path="models/elongation_model_KAM_morphed.tflite")
-kam_interpreter.allocate_tensors()
+predefined_percentages = [5, 7.5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
 
-with open("pca_scalers/pca_phase_map_model_final.pkl", "rb") as f:
-    pca_phase = pickle.load(f)
-with open("pca_scalers/phase_map_scaler.pkl", "rb") as f:
-    scaler_phase = pickle.load(f)
+def find_closest_images(percentage, image_type):
+    if percentage in predefined_percentages:
+        closest_lower = closest_upper = percentage
+    else:
+        closest_lower = max([p for p in predefined_percentages if p <= percentage])
+        closest_upper = min([p for p in predefined_percentages if p >= percentage])
 
-with open("pca_scalers/pca_KAM_model_final.pkl", "rb") as f:
-    pca_kam = pickle.load(f)
-with open("pca_scalers/KAM_scaler.pkl", "rb") as f:
-    scaler_kam = pickle.load(f)
+    folder = PHASE_MAP_IMG_FOLDER if image_type == "phase_map" else KAM_IMG_FOLDER
+    img_lower_path = os.path.join(folder, f"phase_map_{closest_lower}.png")
+    img_upper_path = os.path.join(folder, f"phase_map_{closest_upper}.png")
 
-def extract_features(image_path, pca, scaler):
-    img = cv2.imread(image_path)
-    if img is None:
-        return None
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (512, 512))
+    return img_lower_path, img_upper_path, closest_lower, closest_upper
 
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
-    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
-    lbp = skf.local_binary_pattern(gray, P=8, R=1, method="uniform")
+def generate_morphed_image(percentage, image_type):
+    """Blends the two closest images to create an intermediate image."""
+    img_lower_path, img_upper_path, lower_perc, upper_perc = find_closest_images(percentage, image_type)
 
-    feature_vector = np.hstack([sobelx.flatten(), sobely.flatten(), lbp.flatten()])
-    feature_vector = feature_vector.reshape(1, -1)
+    if not os.path.exists(img_lower_path) or not os.path.exists(img_upper_path):
+        return None  
 
-    feature_vector = scaler.transform(feature_vector)
-    feature_vector_pca = pca.transform(feature_vector)
+    img_lower = cv2.imread(img_lower_path)
+    img_upper = cv2.imread(img_upper_path)
 
-    return feature_vector_pca.astype("float32")
+    alpha = (percentage - lower_perc) / (upper_perc - lower_perc) if upper_perc != lower_perc else 0
+    morphed_img = cv2.addWeighted(img_lower, 1 - alpha, img_upper, alpha, 0)
 
-def predict_with_tflite(interpreter, features):
-    """Runs inference using a TFLite model."""
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
+    output_path = os.path.join(MORPHED_OUTPUT_FOLDER, f"generated_{percentage}.png")
+    cv2.imwrite(output_path, morphed_img)
 
-    interpreter.set_tensor(input_details[0]['index'], features)
-    interpreter.invoke()
-    prediction = interpreter.get_tensor(output_details[0]['index'])
+    return output_path
 
-    return prediction[0][0]
+@app.route("/generate_image", methods=["POST"])
+def generate_image():
+    """Handles user request, morphs image, and returns the downloadable image file."""
+    data = request.json
+    percentage = data.get("percentage")
+    image_type = data.get("type")  
 
-@app.route("/predict_phase_map", methods=["POST"])
-def predict_phase_map():
-    if "file" not in request.files:
-        return jsonify({"error": "No file part"}), 400
+    if percentage is None or image_type not in ["phase_map", "kam"]:
+        return jsonify({"error": "Invalid request. Provide percentage and type."}), 400
 
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
+    if percentage < 5:
+        return jsonify({"error": "Enter minimum 5%"}), 400
+    if percentage > 60:
+        return jsonify({"error": "Enter maximum 60%"}), 400
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
+    image_path = generate_morphed_image(percentage, image_type)
+    if image_path is None:
+        return jsonify({"error": "Could not generate image"}), 500
 
-    features = extract_features(filepath, pca_phase, scaler_phase)
-    if features is None:
-        return jsonify({"error": "Invalid image"}), 400
-
-    prediction = predict_with_tflite(phase_map_interpreter, features)
-    os.remove(filepath)
-    return jsonify({"prediction": round(float(prediction), 2)})
-
-@app.route("/predict_kam", methods=["POST"])
-def predict_kam():
-    if "file" not in request.files:
-        return jsonify({"error": "No file part"}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
-
-    features = extract_features(filepath, pca_kam, scaler_kam)
-    if features is None:
-        return jsonify({"error": "Invalid image"}), 400
-
-    prediction = predict_with_tflite(kam_interpreter, features)
-    os.remove(filepath)
-    return jsonify({"prediction": round(float(prediction), 2)})
+    return send_file(image_path, mimetype="image/png", as_attachment=True, download_name=f"elongation_{percentage}.png")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
