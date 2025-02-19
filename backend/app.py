@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+import traceback
 
 app = Flask(__name__)
 CORS(app, origins=["https://tensileelongationdeploy.vercel.app"])
@@ -48,24 +49,34 @@ def generate_morphed_image(percentage, image_type):
 
 @app.route("/generate_image", methods=["POST"])
 def generate_image():
-    """Handles user request, morphs image, and returns the downloadable image file."""
-    data = request.json
-    percentage = data.get("percentage")
-    image_type = data.get("type")  
+    try:
+        data = request.json
+        percentage = data.get("percentage")
+        image_type = data.get("type")
 
-    if percentage is None or image_type not in ["phase_map", "kam"]:
-        return jsonify({"error": "Invalid request. Provide percentage and type."}), 400
+        if percentage is None or image_type not in ["phase_map", "kam"]:
+            return jsonify({"error": "Invalid request. Provide percentage and type."}), 400
 
-    if percentage < 5:
-        return jsonify({"error": "Enter minimum 5%"}), 400
-    if percentage > 60:
-        return jsonify({"error": "Enter maximum 60%"}), 400
+        if percentage < 5:
+            return jsonify({"error": "Enter minimum 5%"}), 400
+        if percentage > 60:
+            return jsonify({"error": "Enter maximum 60%"}), 400
 
-    image_path = generate_morphed_image(percentage, image_type)
-    if image_path is None:
-        return jsonify({"error": "Could not generate image"}), 500
+        print(f"Processing request for {percentage}% ({image_type})")  # Debug Log
 
-    return send_file(image_path, mimetype="image/png", as_attachment=True, download_name=f"elongation_{percentage}.png")
+        image_path = generate_morphed_image(percentage, image_type)
+
+        if image_path is None:
+            return jsonify({"error": "Could not generate image"}), 500
+
+        print(f"Generated image at {image_path}")  # Debug Log
+
+        return send_file(image_path, mimetype="image/png", as_attachment=True, download_name=f"elongation_{percentage}.png")
+
+    except Exception as e:
+        print(f"❌ ERROR: {e}")  # Debug Log
+        traceback.print_exc()  # Print full error details
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
